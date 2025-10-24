@@ -1,22 +1,20 @@
-# Stage 1: Build the application
-FROM maven:3.9.9-eclipse-temurin-17 AS builder
+# syntax=docker/dockerfile:1.6
+
+# Stage 1: build with JDK 21
+FROM maven:3.9.9-eclipse-temurin-21 AS build
 WORKDIR /app
+
+# Download deps first (cached)
 COPY pom.xml .
-# Download dependencies first (leverages Docker cache)
-RUN mvn dependency:go-offline -B
+RUN --mount=type=cache,target=/root/.m2 mvn -B -q -DskipTests dependency:go-offline
+
+# Build
 COPY src ./src
-# Package the application
-RUN mvn clean package -DskipTests
+RUN --mount=type=cache,target=/root/.m2 mvn -B -DskipTests clean package
 
-# Stage 2: Create the runtime image
-FROM eclipse-temurin:17-jre-alpine
+# Stage 2: slim runtime with JRE 21
+FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
-
-# Copy the built JAR from the builder stage
-COPY --from=builder /app/target/*.jar app.jar
-
-# Expose the port Spring Boot runs on
+COPY --from=build /app/target/*-SNAPSHOT.jar app.jar
 EXPOSE 8080
-
-# Run the application
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java","-jar","/app/app.jar"]
